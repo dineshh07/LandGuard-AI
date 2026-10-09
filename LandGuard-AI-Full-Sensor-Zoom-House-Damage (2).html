@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>LandGuard AI - Safe Evacuation & Landslide Demo</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#06130f;font-family:Arial;color:#fff}
+#scene{position:fixed;inset:0}canvas{display:block}
+.hud{position:fixed;z-index:10;pointer-events:none}.top{left:18px;top:16px}
+.brand{font-size:20px;font-weight:900;letter-spacing:2px}.sub{font-size:10px;color:#8ca9a1;margin-top:4px;letter-spacing:1.5px}
+.panel{background:rgba(3,17,15,.84);border:1px solid rgba(92,220,185,.18);box-shadow:0 10px 35px #0006;backdrop-filter:blur(10px);border-radius:12px}
+.warning{left:50%;top:18px;transform:translateX(-50%);width:430px;text-align:center;padding:10px 14px}
+.warning .phase{font-size:10px;letter-spacing:1.5px;color:#79a89e}.warning strong{display:block;margin-top:3px;font-size:14px}
+.dashboard{right:16px;top:16px;width:255px;padding:12px}.title{font-size:10px;letter-spacing:1.5px;color:#80b7a9;margin-bottom:8px}
+.risk{font-size:27px;font-weight:900;color:#52e3a8}.risk.moderate{color:#ffd45a}.risk.high{color:#ff9f43}.risk.critical{color:#ff4e4e}
+.bar{height:7px;background:#132722;border-radius:8px;overflow:hidden;margin:8px 0}.bar i{display:block;height:100%;width:12%;background:#55e6a8;border-radius:8px;transition:.4s}
+.sensor{padding:7px 8px;margin-top:6px;border-radius:8px;background:#ffffff09;border:1px solid #ffffff0a;font-size:10px}.sensor.active{border-color:#ff5b5b;background:#ff3c3c19}
+.sensor b{display:block;font-size:10px}.sensor span{color:#88aaa0;font-size:9px}.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#55e6a8;margin-right:5px}
+.sensor.active .dot{background:#ff5252;box-shadow:0 0 12px #ff5252}
+.phone{right:280px;bottom:24px;width:245px;padding:12px;border:1px solid #ff4e4e73;background:#120808eb;display:none}.phone.show{display:block;animation:pop .3s}
+.phone .head{font-size:9px;color:#ff7070;letter-spacing:1px}.phone .msg{font-size:15px;font-weight:900;margin-top:6px}.phone small{color:#aaa}
+.safe{left:50%;bottom:22px;transform:translateX(-50%);padding:10px 18px;color:#67f2ad;font-size:12px;font-weight:900;display:none;border:1px solid #67f2ad59}.safe.show{display:block}
+.danger{position:fixed;inset:0;z-index:8;pointer-events:none;background:radial-gradient(circle,transparent 35%,#f000002b);display:none}.danger.show{display:block;animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.35}}@keyframes pop{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}
+.hint{left:18px;bottom:16px;font-size:9px;color:#719188;letter-spacing:1px}.controls{left:18px;bottom:42px;display:flex;gap:6px}
+button{pointer-events:auto;border:0;border-radius:8px;padding:8px 12px;background:#15372f;color:#dffff3;font-size:10px;cursor:pointer}button:hover{background:#1c5143}
+#toast{left:50%;top:78px;transform:translateX(-50%);padding:8px 14px;font-size:11px;display:none}#toast.show{display:block}
+#flash{position:fixed;inset:0;z-index:20;background:#fff;opacity:0;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="scene"></div>
+
+<div class="hud top"><div class="brand">LANDGUARD AI</div><div class="sub">PREDICT THE SLOPE • PROTECT THE PEOPLE</div></div>
+
+<div class="hud warning panel">
+<div class="phase" id="phase">LIVE DEMONSTRATION • NORMAL MONITORING</div>
+<strong id="message">All sensors nominal — community monitoring active</strong>
+</div>
+
+<div class="hud dashboard panel">
+<div class="title">AI RISK INTELLIGENCE</div>
+<div id="risk" class="risk">LOW</div>
+<div class="bar"><i id="riskBar"></i></div>
+<div class="title">MULTI-SENSOR FUSION</div>
+<div class="sensor" id="s0"><span><i class="dot"></i>RAIN-01</span><b>RAINFALL GAUGE</b></div>
+<div class="sensor" id="s1"><span><i class="dot"></i>SOIL-02</span><b>SOIL MOISTURE</b></div>
+<div class="sensor" id="s2"><span><i class="dot"></i>TILT-03</span><b>INCLINOMETER</b></div>
+<div class="sensor" id="s3"><span><i class="dot"></i>VIB-04</span><b>GROUND VIBRATION</b></div>
+<div class="sensor" id="s4"><span><i class="dot"></i>TEMP-05</span><b>TEMPERATURE</b></div>
+<div style="margin-top:9px;font-size:9px;color:#6e9187">MODEL: SENSOR FUSION + TREND ANALYSIS</div>
+</div>
+
+<div class="hud phone panel" id="phone">
+<div class="head">📱 LANDGUARD EMERGENCY ALERT</div>
+<div class="msg">EARLY WARNING</div>
+<small>High slope instability detected. Move to the designated safe zone.</small>
+</div>
+
+<div class="hud safe panel" id="safeStatus">✓ 7 / 7 RESIDENTS REACHED SAFE ZONE</div>
+<div id="toast" class="hud panel"></div><div class="danger" id="danger"></div><div id="flash"></div>
+<div class="hud hint">SIMULATION MODE • SENSOR VALUES ARE DEMONSTRATION DATA</div>
+<div class="hud controls"><button id="restart">↻ RESTART DEMO</button><button id="skipSafe">→ SKIP TO SAFE ZONE</button></div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+/* =========================================================
+LANDGUARD AI
+FLOW:
+SENSORS → WARNING → EVACUATION → 7/7 SAFE → LANDSLIDE
+→ ROCK/MUD IMPACT → HOUSES BREAK → COMMUNITY PROTECTED
+========================================================= */
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x061713);
+scene.fog=new THREE.FogExp2(0x071c17,.012);
+
+const camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.1,500);
+camera.position.set(0,22,72);
+
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+document.getElementById("scene").appendChild(renderer.domElement);
+
+const clock=new THREE.Clock();
+const world=new THREE.Group();
+scene.add(world);
+
+scene.add(new THREE.HemisphereLight(0x9adbc8,0x142019,1.7));
+const sun=new THREE.DirectionalLight(0xd7fff1,2.1);
+sun.position.set(-25,50,25);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);scene.add(sun);
+
+function M(c,r=.8,t=false,o=1){return new THREE.MeshStandardMaterial({color:c,roughness:r,metalness:.03,transparent:t,opacity:o})}
+function B(w,h,d,c){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),M(c));m.castShadow=true;m.receiveShadow=true;return m}
+function C(a,b,h,c,s=12){const m=new THREE.Mesh(new THREE.CylinderGeometry(a,b,h,s),M(c));m.castShadow=true;m.receiveShadow=true;return m}
+
+function label(text,color="#d7fff3",bg="rgba(2,20,17,.86)"){
+ const c=document.createElement("canvas");c.width=512;c.height=96;const x=c.getContext("2d");
+ x.fillStyle=bg;x.beginPath();x.roundRect(5,10,502,76,14);x.fill();
+ x.font="bold 25px Arial";x.textAlign="center";x.textBaseline="middle";x.fillStyle=color;x.fillText(text,256,48);
+ const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthWrite:false}));
+ s.scale.set(5.2,.98,1);return s;
+}
+
+/* GROUND */
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(150,150),M(0x0b3024));
+ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;world.add(ground);
+
+/* ROAD */
+const road=new THREE.Mesh(new THREE.PlaneGeometry(100,7),M(0x26342f));
+road.rotation.x=-Math.PI/2;road.rotation.z=-.12;road.position.set(8,.025,30);world.add(road);
+for(let i=0;i<18;i++){const m=B(2,.025,.12,0xb9b89b);m.position.set(-32+i*4,.055,30-i*.48);world.add(m)}
+
+/* MOUNTAINS - kept behind houses */
+function mountain(x,z,w,h,d,c){
+ const m=new THREE.Mesh(new THREE.ConeGeometry(w/2,h,10,5,false),M(c));
+ m.position.set(x,h/2-1,z);m.scale.z=d/w;m.castShadow=true;m.receiveShadow=true;world.add(m);return m;
+}
+mountain(-18,-12,45,34,20,0x123c2e);
+mountain(20,-16,52,39,22,0x0d3428);
+mountain(-3,-7,35,30,15,0x173f30);
+
+for(let i=0;i<9;i++){
+ const p=new THREE.Mesh(new THREE.SphereGeometry(4+Math.random()*3,10,6),M(0x1d5039));
+ p.scale.y=.28;p.position.set(-18+i*4,-.2,-1-Math.random()*4);world.add(p);
+}
+
+/* EXPOSED SOIL LAYERS */
+const soilGroup=new THREE.Group();world.add(soilGroup);
+const soilBase=B(25,8,1.7,0x68432a);soilBase.position.set(-3,7,-.3);soilBase.rotation.z=-.08;soilGroup.add(soilBase);
+for(let i=0;i<10;i++){
+ const l=B(2.3+Math.random()*3,.45,1.9,i%2?0x754a2b:0x8b5831);
+ l.position.set(-14+i*2.5,3.5+i*.75,-.9);l.rotation.z=-.08+(Math.random()-.5)*.12;soilGroup.add(l);
+}
+
+/* TREES */
+function tree(x,z,s=1){
+ const g=new THREE.Group(),t=C(.16,.22,1.5,0x4a3021),c=new THREE.Mesh(new THREE.SphereGeometry(.85,8,7),M(0x1e603d));
+ t.position.y=.75;c.position.y=1.8;c.scale.y=.9;g.add(t,c);g.position.set(x,0,z);g.scale.setScalar(s);world.add(g);
+}
+for(let i=0;i<30;i++)tree(-30+Math.random()*65,8+Math.random()*20,.7+Math.random()*.7);
+
+/* HOUSES */
+function house(x,z){
+ const g=new THREE.Group();
+ const body=B(4,2.7,3.4,0xcbb99b);body.position.y=1.35;g.add(body);
+ const roof=new THREE.Mesh(new THREE.ConeGeometry(3.1,2.1,4),M(0x6e3026));roof.rotation.y=Math.PI/4;roof.position.y=3.7;roof.scale.z=.72;g.add(roof);
+ const door=B(.65,1.25,.08,0x2b1d18);door.position.set(0,.65,1.73);g.add(door);
+ const w1=B(.65,.55,.08,0x80b8b0);w1.position.set(-1.15,1.65,1.73);g.add(w1);
+ const w2=w1.clone();w2.position.x=1.15;g.add(w2);
+ g.position.set(x,.15,z);g.userData={baseX:x,baseZ:z,broken:false};world.add(g);return g;
+}
+const houses=[house(-17,17),house(-11,18),house(-5,19),house(1,20),house(7,21)];
+const villageLabel=label("MOUNTAIN VILLAGE","#d9fff4");villageLabel.position.set(-5,5,20);villageLabel.scale.set(3.8,.72,1);world.add(villageLabel);
+
+/* SENSORS - all have separate zoom camera positions */
+const sensorObjects=[];
+const sensorData=[
+ ["RAIN-01","RAINFALL GAUGE",-15,5,4],
+ ["SOIL-02","SOIL MOISTURE",-10,8,1],
+ ["TILT-03","INCLINOMETER",-5,11,-1.5],
+ ["VIB-04","GROUND VIBRATION",0,14,-3],
+ ["TEMP-05","TEMPERATURE",5,17,-4]
+];
+function makeSensor(id,type,x,y,z,index){
+ const g=new THREE.Group();
+ const pole=C(.08,.11,2.4,0x777e79);pole.position.y=1.2;
+ const device=B(.65,.38,.5,0x1b2925);device.position.y=2.25;
+ const led=new THREE.Mesh(new THREE.SphereGeometry(.09,10,8),new THREE.MeshBasicMaterial({color:0x55f1a6}));led.position.set(0,2.48,.28);
+ const txt=label(id,"#b9fff0");txt.position.set(0,3.2,0);txt.scale.set(2.25,.43,1);
+ const typ=label(type,"#86aaa0","rgba(2,15,13,.72)");typ.position.set(0,2.72,0);typ.scale.set(2.8,.38,1);
+ g.add(pole,device,led,txt,typ);g.position.set(x,y,z);g.userData={id,type,led,index};world.add(g);sensorObjects.push(g);
+}
+sensorData.forEach((d,i)=>makeSensor(...d,i));
+
+/* SIREN */
+const tower=new THREE.Group();
+const tp=C(.25,.38,7,0x35433d);tp.position.y=3.5;
+const tt=B(1.7,.5,1.2,0x26332e);tt.position.y=7.1;
+const beacon=new THREE.Mesh(new THREE.SphereGeometry(.35,16,12),new THREE.MeshBasicMaterial({color:0x4ee8a6}));beacon.position.y=7.7;
+const sl=label("EMERGENCY SIREN","#baffef");sl.position.set(0,8.9,0);sl.scale.set(3,.55,1);
+tower.add(tp,tt,beacon,sl);tower.position.set(-1,0,13);world.add(tower);
+
+/* SAFE ZONE */
+const safeGroup=new THREE.Group();
+const sf=new THREE.Mesh(new THREE.CircleGeometry(7,32),M(0x145d42));sf.rotation.x=-Math.PI/2;sf.position.y=.08;
+const sr=new THREE.Mesh(new THREE.RingGeometry(6.2,6.8,32),new THREE.MeshBasicMaterial({color:0x5bf2ac,side:THREE.DoubleSide}));sr.rotation.x=-Math.PI/2;sr.position.y=.11;
+const shelter=B(7,3.2,4,0x4c7966);shelter.position.y=1.6;
+const roof=new THREE.Mesh(new THREE.ConeGeometry(4.5,2.2,4),M(0x25503e));roof.rotation.y=Math.PI/4;roof.position.y=4.2;shelter.add(roof);
+const fp=C(.05,.05,5,0xd2ddd6);fp.position.set(4,2.5,0);
+const fl=B(2,.9,.04,0x5bf2ac);fl.position.set(5,4.2,0);
+const safeLabel=label("SAFE ZONE • 500m","#68ffb0");safeLabel.position.set(0,6.2,0);safeLabel.scale.set(4.5,.8,1);
+const allSafeLabel=label("✓ 7 / 7 RESIDENTS SAFE","#68ffb0");allSafeLabel.position.set(0,7.35,0);allSafeLabel.scale.set(4.6,.72,1);allSafeLabel.visible=false;
+safeGroup.add(sf,sr,shelter,fp,fl,safeLabel,allSafeLabel);safeGroup.position.set(42,0,48);world.add(safeGroup);
+
+/* EVACUATION ROUTE */
+const routePoints=[
+ new THREE.Vector3(-17,.15,17),new THREE.Vector3(-12,.15,23),new THREE.Vector3(-5,.15,29),
+ new THREE.Vector3(5,.15,35),new THREE.Vector3(18,.15,41),new THREE.Vector3(30,.15,46),new THREE.Vector3(42,.15,48)
+];
+const routeCurve=new THREE.CatmullRomCurve3(routePoints);
+world.add(new THREE.Mesh(new THREE.TubeGeometry(routeCurve,100,.055,6,false),new THREE.MeshBasicMaterial({color:0x5cf2aa})));
+
+/* PEOPLE */
+const people=[];
+function person(x,z,index){
+ const g=new THREE.Group();
+ const shirt=M(index%2?0x55b9a1:0x5d8ce6),skin=M(0xf0bd8f),dark=M(0x20231f);
+ const body=C(.24,.28,1.05,shirt,8);body.position.y=1.05;
+ const head=new THREE.Mesh(new THREE.SphereGeometry(.27,10,8),skin);head.position.y=1.78;
+ const a1=C(.08,.09,.7,skin,7);a1.position.set(-.38,1.12,0);a1.rotation.z=-.35;
+ const a2=a1.clone();a2.position.x=.38;a2.rotation.z=.35;
+ const l1=C(.09,.11,.75,dark,7);l1.position.set(-.13,.35,0);
+ const l2=l1.clone();l2.position.x=.13;
+ g.add(body,head,a1,a2,l1,l2);g.position.set(x,.1,z);
+ g.userData={progress:index*.025,index,safe:false,a1,a2,l1,l2,start:new THREE.Vector3(x,.1,z)};
+ world.add(g);people.push(g);
+}
+[[-17,17],[-11,18],[-5,19],[1,20],[7,21],[-8,22],[4,23]].forEach((p,i)=>person(p[0],p[1],i));
+
+/* RAIN */
+const rainCount=2400,rainPos=new Float32Array(rainCount*3);
+for(let i=0;i<rainCount;i++){rainPos[i*3]=-40+Math.random()*100;rainPos[i*3+1]=5+Math.random()*55;rainPos[i*3+2]=-5+Math.random()*80}
+const rainGeo=new THREE.BufferGeometry();rainGeo.setAttribute("position",new THREE.BufferAttribute(rainPos,3));
+const rain=new THREE.Points(rainGeo,new THREE.PointsMaterial({color:0x9fd8d0,size:.08,transparent:true,opacity:.55}));rain.visible=false;world.add(rain);
+
+/* LANDSLIDE GROUPS */
+const rockGroup=new THREE.Group(),mudGroup=new THREE.Group(),dustGroup=new THREE.Group();
+world.add(rockGroup,mudGroup,dustGroup);
+const rocks=[],mud=[],dust=[];
+
+function clearGroup(g){while(g.children.length)g.remove(g.children[0])}
+
+/* HOUSES BREAKING */
+function breakHouse(h,index){
+ if(h.userData.broken)return;
+ h.userData.broken=true;
+
+ /* hide normal roof and split the body visually */
+ const body=h.children[0],roof=h.children[1];
+ body.scale.y=.65;
+ body.rotation.z=(index%2?.24:-.24);
+ body.position.y=.9;
+
+ roof.rotation.z=(index%2?.35:-.35);
+ roof.rotation.x=.22;
+ roof.position.y=2.7;
+
+ /* add cracked debris */
+ for(let i=0;i<9;i++){
+  const d=B(.25+Math.random()*.6,.2+Math.random()*.5,.25+Math.random()*.5,i%2?0x8d7358:0x6d5744);
+  d.position.set(
+   h.userData.baseX+(Math.random()-.5)*3.5,
+   .2+Math.random()*2.3,
+   h.userData.baseZ+(Math.random()-.5)*2.5
+  );
+  d.rotation.set(Math.random()*3,Math.random()*3,Math.random()*3);
+  d.userData={vx:(Math.random()-.5)*.08,vy:.03+Math.random()*.08,vz:(Math.random()-.5)*.08};
+  world.add(d);
+  brokenDebris.push(d);
+ }
+}
+
+/* landslide debris */
+const brokenDebris=[];
+
+function createLandslide(){
+ clearGroup(rockGroup);clearGroup(mudGroup);clearGroup(dustGroup);
+ rocks.length=0;mud.length=0;dust.length=0;
+
+ /* heavy soil / rocks */
+ for(let i=0;i<115;i++){
+  const s=.35+Math.random()*1.15;
+  const r=new THREE.Mesh(new THREE.DodecahedronGeometry(s,0),M(i%3===0?0x744426:i%3===1?0x8a5430:0x5e3823));
+  r.position.set(-14+Math.random()*23,15+Math.random()*13,-1+Math.random()*5);
+  r.rotation.set(Math.random()*3,Math.random()*3,Math.random()*3);r.castShadow=true;
+  r.userData={vx:(-.05+Math.random()*.1),vy:-.07-Math.random()*.13,vz:.08+Math.random()*.18,delay:Math.random()*1.5};
+  rockGroup.add(r);rocks.push(r);
+ }
+
+ /* dense mud */
+ for(let i=0;i<85;i++){
+  const m=B(.55+Math.random()*1.2,.25+Math.random()*.45,.8+Math.random()*1.4,i%2?0x7b4829:0x956039);
+  m.position.set(-13+Math.random()*20,13+Math.random()*12,-.4+Math.random()*3);
+  m.rotation.set(Math.random(),Math.random(),Math.random());
+  m.userData={speed:.055+Math.random()*.09,delay:Math.random()*1.4};
+  mudGroup.add(m);mud.push(m);
+ }
+
+ /* dust */
+ for(let i=0;i<190;i++){
+  const p=new THREE.Mesh(new THREE.SphereGeometry(.12+Math.random()*.25,6,5),new THREE.MeshBasicMaterial({color:0x9a8067,transparent:true,opacity:.45}));
+  p.position.set(-3+Math.random()*12,5+Math.random()*5,12+Math.random()*5);
+  p.userData={vx:(Math.random()-.3)*.12,vy:.03+Math.random()*.09,vz:.12+Math.random()*.18,life:0,max:2+Math.random()*2};
+  dustGroup.add(p);dust.push(p);
+ }
+}
+
+/* STATE */
+let elapsed=0,allSafe=false,landslideStarted=false,activeSensor=-1,cameraMode=0;
+let housesBroken=false;
+
+/* FIVE DIFFERENT SENSOR CAMERA SHOTS */
+const sensorCameras=[
+ new THREE.Vector3(-25,11,30),
+ new THREE.Vector3(-18,14,19),
+ new THREE.Vector3(-10,18,8),
+ new THREE.Vector3(1,21,3),
+ new THREE.Vector3(12,22,6)
+];
+
+/* timeline */
+const phases=[
+ [0,"LIVE DEMONSTRATION • NORMAL MONITORING","All sensors nominal — community monitoring active"],
+ [5,"HEAVY RAINFALL DETECTED","RAIN-01 detects rapidly increasing rainfall"],
+ [10,"SOIL MOISTURE RISING","SOIL-02 reports saturation trend"],
+ [15,"GROUND MOVEMENT DETECTED","TILT-03 reports increasing slope movement"],
+ [20,"GROUND VIBRATION DETECTED","VIB-04 detects abnormal vibration"],
+ [25,"MULTI-SENSOR FUSION","AI combines all sensor inputs"],
+ [29,"EARLY WARNING ISSUED","Move to the designated safe zone immediately"],
+ [34,"EMERGENCY EVACUATION","Residents are running to the safe zone"],
+ [48,"EVACUATION CONTINUES","Camera verifies every resident"],
+ [55,"SAFE-ZONE VERIFICATION","AI confirms final residents"],
+ [60,"SLOPE FAILURE BEGINS","All 7 residents are safe — landslide starts"],
+ [64,"LANDSLIDE IN PROGRESS","Soil, rocks and debris moving downslope"],
+ [75,"VILLAGE IMPACT","Structures damaged by the simulated landslide"],
+ [82,"COMMUNITY PROTECTED","7 / 7 residents safe after the event"]
+];
+
+function phase(text,msg){document.getElementById("phase").textContent=text;document.getElementById("message").textContent=msg}
+function risk(level,v){const e=document.getElementById("risk");e.textContent=level;e.className="risk "+level.toLowerCase();document.getElementById("riskBar").style.width=v+"%"}
+function toast(t){const e=document.getElementById("toast");e.textContent=t;e.classList.add("show");setTimeout(()=>e.classList.remove("show"),1800)}
+function sensor(i){
+ activeSensor=i;
+ sensorObjects.forEach((s,j)=>s.userData.led.material.color.set(j===i?0xff4d4d:0x55f1a6));
+ document.querySelectorAll(".sensor").forEach((e,j)=>e.classList.toggle("active",j===i));
+ cameraMode=1;
+}
+function phone(on){document.getElementById("phone").classList.toggle("show",on)}
+
+/* PEOPLE */
+function updatePeople(){
+ if(allSafe||elapsed<34)return;
+
+ people.forEach((p,i)=>{
+  if(p.userData.safe)return;
+
+  const speed=p.userData.progress<.7?.0052:.008;
+  p.userData.progress=Math.min(1,p.userData.progress+speed);
+
+  const pos=routeCurve.getPointAt(Math.min(1,p.userData.progress));
+  p.position.copy(pos);p.position.y=.1;
+
+  const tan=routeCurve.getTangentAt(Math.min(.999,p.userData.progress));
+  p.rotation.y=Math.atan2(tan.x,tan.z);
+
+  const run=Math.sin(elapsed*15+i);
+  p.userData.a1.rotation.z=-.35+run*.55;
+  p.userData.a2.rotation.z=.35-run*.55;
+  p.userData.l1.rotation.x=run*.65;
+  p.userData.l2.rotation.x=-run*.65;
+
+  if(p.userData.progress>=1){
+   p.userData.safe=true;
+   p.position.set(42+(i%3-1)*1.2,.1,48+Math.floor(i/3)*1.3);
+   p.rotation.y=Math.PI;
+  }
+ });
+
+ const count=people.filter(p=>p.userData.safe).length;
+
+ if(count===7){
+  allSafe=true;
+  cameraMode=2;
+  safeLabel.visible=false;
+  allSafeLabel.visible=true;
+  document.getElementById("safeStatus").classList.add("show");
+  phase("ALL RESIDENTS REACHED SAFE ZONE","✓ 7 / 7 residents confirmed safe — landslide is now allowed");
+  risk("CRITICAL",96);
+  toast("✓ 7/7 RESIDENTS SAFE");
+ }
+}
+
+/* LANDSLIDE START - LOCKED UNTIL ALL SAFE */
+function startLandslide(){
+ if(landslideStarted||!allSafe)return;
+
+ landslideStarted=true;
+ createLandslide();
+ cameraMode=3;
+
+ document.getElementById("danger").classList.add("show");
+ document.getElementById("flash").style.opacity=.75;
+ setTimeout(()=>document.getElementById("flash").style.opacity=0,100);
+ toast("⚠ SLOPE FAILURE — LANDSLIDE STARTED");
+}
+
+/* DAMAGE + HOUSE COLLAPSE */
+function updateDamage(dt){
+ if(!landslideStarted)return;
+
+ rocks.forEach(r=>{
+  const u=r.userData;
+  if(u.delay>0){u.delay-=dt;return}
+  r.position.x+=u.vx;r.position.y+=u.vy;r.position.z+=u.vz;
+  r.rotation.x+=.08;r.rotation.z+=.06;
+  if(r.position.y<.8){r.position.y=.8;u.vy*=.15;u.vz*=.95}
+ });
+
+ mud.forEach(m=>{
+  const u=m.userData;
+  if(u.delay>0){u.delay-=dt;return}
+  m.position.y-=u.speed;m.position.z+=u.speed*1.9;
+  m.position.x+=Math.sin(elapsed*2+m.position.x)*.012;
+  m.rotation.x+=.04;
+  if(m.position.y<.3){m.position.y=.3;m.position.z+=.08}
+ });
+
+ dust.forEach(p=>{
+  const u=p.userData;u.life+=dt;
+  p.position.x+=u.vx;p.position.y+=u.vy;p.position.z+=u.vz;
+  p.scale.multiplyScalar(1.006);
+  p.material.opacity=Math.max(0,.45*(1-u.life/u.max));
+ });
+
+ /* houses first shake */
+ houses.forEach(h=>{
+  if(!h.userData.broken){
+   h.position.x=h.userData.baseX+(Math.random()-.5)*.07;
+   h.position.z=h.userData.baseZ+(Math.random()-.5)*.07;
+  }
+ });
+
+ /* after impact delay, houses break one by one */
+ if(elapsed>=72&&!housesBroken){
+  housesBroken=true;
+  houses.forEach((h,i)=>setTimeout(()=>breakHouse(h,i),i*350));
+  toast("🏠 LANDSLIDE IMPACT — STRUCTURES DAMAGED");
+ }
+
+ /* broken debris */
+ brokenDebris.forEach(d=>{
+  const u=d.userData;
+  d.position.x+=u.vx;d.position.y+=u.vy;d.position.z+=u.vz;
+  u.vy-=.003;
+  if(d.position.y<.1){d.position.y=.1;u.vy*=-.15}
+ });
+
+ beacon.material.color.set(Math.sin(elapsed*12)>0?0xff3030:0xffa000);
+}
+
+/* CAMERA */
+function updateCamera(dt){
+ let target=new THREE.Vector3(-2,7,18);
+
+ if(cameraMode===1&&activeSensor>=0){
+  const p=sensorCameras[activeSensor];
+  camera.position.lerp(p,Math.min(1,dt*2.2));
+  target.copy(sensorObjects[activeSensor].position);target.y+=2;
+ }
+ else if(cameraMode===2){
+  const p=safeGroup.position;
+  camera.position.lerp(new THREE.Vector3(p.x+10,p.y+10,p.z+15),Math.min(1,dt*1.8));
+  target.copy(p);target.y+=2;
+ }
+ else if(cameraMode===3){
+  camera.position.lerp(new THREE.Vector3(5,18,48),Math.min(1,dt*1.4));
+  target.set(-2,9,6);
+ }
+ else{
+  camera.position.lerp(new THREE.Vector3(3,21,72),Math.min(1,dt*1.1));
+  target.set(-2,7,18);
+ }
+
+ camera.lookAt(target);
+
+ if(landslideStarted){
+  camera.position.x+=(Math.random()-.5)*.10;
+  camera.position.y+=(Math.random()-.5)*.10;
+ }
+}
+
+/* TIMELINE */
+function timeline(){
+ let p=phases[0];
+ for(const x of phases)if(elapsed>=x[0])p=x;
+
+ phase(p[1],p[2]);
+
+ if(elapsed<5){
+  risk("LOW",12);rain.visible=false;cameraMode=0;
+ }
+ else if(elapsed<10){
+  risk("MODERATE",32);rain.visible=true;sensor(0);
+ }
+ else if(elapsed<15){
+  risk("MODERATE",47);sensor(1);
+ }
+ else if(elapsed<20){
+  risk("HIGH",64);sensor(2);
+ }
+ else if(elapsed<25){
+  risk("HIGH",76);sensor(3);
+ }
+ else if(elapsed<29){
+  risk("HIGH",84);sensor(4);
+ }
+ else if(elapsed<34){
+  risk("CRITICAL",94);cameraMode=0;phone(true);beacon.material.color.set(0xff3030);
+ }
+ else if(elapsed<48){
+  risk("CRITICAL",96);phone(true);cameraMode=0;
+ }
+ else if(elapsed<55){
+  if(!allSafe){
+   phase("EVACUATION IN PROGRESS","Residents are still running — landslide remains LOCKED");
+   cameraMode=0;
+  }else{
+   cameraMode=2;phone(false);
+  }
+ }
+ else if(elapsed<60){
+  if(!allSafe){
+   phase("EVACUATION EXTENDED","Waiting for all 7 residents — NO LANDSLIDE YET");
+   cameraMode=0;
+  }else{
+   cameraMode=2;
+  }
+ }
+ else if(elapsed<64){
+  if(allSafe){
+   startLandslide();
+   phase("SLOPE FAILURE BEGINS","✓ All 7 residents safe — landslide now starts");
+  }else{
+   phase("LANDSLIDE LOCKED","Waiting for residents to reach the safe zone");
+  }
+ }
+ else if(elapsed<75){
+  if(allSafe)startLandslide();
+ }
+ else if(elapsed<82){
+  if(allSafe){
+   phase("VILLAGE IMPACT","Soil and debris have reached the village");
+   cameraMode=3;
+  }
+ }
+ else{
+  if(allSafe){
+   phase("COMMUNITY PROTECTED","✓ Landslide occurred AFTER evacuation — 7 / 7 residents safe");
+   risk("CRITICAL",100);
+   cameraMode=3;
+  }
+ }
+}
+
+/* RESET */
+function reset(){
+ elapsed=0;allSafe=false;landslideStarted=false;activeSensor=-1;cameraMode=0;housesBroken=false;
+ clearGroup(rockGroup);clearGroup(mudGroup);clearGroup(dustGroup);
+ rocks.length=0;mud.length=0;dust.length=0;
+ brokenDebris.splice(0);
+ rain.visible=false;
+ document.getElementById("danger").classList.remove("show");
+ document.getElementById("safeStatus").classList.remove("show");
+ phone(false);
+ safeLabel.visible=true;allSafeLabel.visible=false;
+ beacon.material.color.set(0x4ee8a6);
+
+ people.forEach((p,i)=>{
+  p.userData.progress=i*.025;p.userData.safe=false;p.position.copy(p.userData.start);p.position.y=.1;
+ });
+
+ houses.forEach(h=>{
+  h.userData.broken=false;
+  h.position.x=h.userData.baseX;h.position.z=h.userData.baseZ;
+  h.children[0].scale.set(1,1,1);h.children[0].rotation.z=0;h.children[0].position.y=1.35;
+  h.children[1].rotation.set(0,Math.PI/4,0);h.children[1].position.y=3.7;
+ });
+
+ sensorObjects.forEach(s=>s.userData.led.material.color.set(0x55f1a6));
+ document.querySelectorAll(".sensor").forEach(e=>e.classList.remove("active"));
+ phase("LIVE DEMONSTRATION • NORMAL MONITORING","All sensors nominal — community monitoring active");
+ risk("LOW",12);
+}
+
+document.getElementById("restart").onclick=reset;
+
+document.getElementById("skipSafe").onclick=()=>{
+ people.forEach((p,i)=>{
+  p.userData.safe=true;p.userData.progress=1;
+  p.position.set(42+(i%3-1)*1.2,.1,48+Math.floor(i/3)*1.3);
+ });
+ allSafe=true;safeLabel.visible=false;allSafeLabel.visible=true;
+ document.getElementById("safeStatus").classList.add("show");
+ cameraMode=2;risk("CRITICAL",96);
+ phase("ALL RESIDENTS REACHED SAFE ZONE","✓ 7 / 7 residents safe — landslide can now begin");
+ toast("✓ FORCED TEST: 7/7 SAFE");
+};
+
+/* RESIZE */
+addEventListener("resize",()=>{
+ camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);
+});
+
+/* ANIMATION */
+function animate(){
+ requestAnimationFrame(animate);
+ const dt=Math.min(clock.getDelta(),.05);
+ elapsed+=dt;
+
+ timeline();
+ updatePeople();
+ updateDamage(dt);
+ updateCamera(dt);
+
+ if(rain.visible){
+  const a=rain.geometry.attributes.position.array;
+  for(let i=0;i<rainCount;i++){
+   a[i*3+1]-=.75;a[i*3+2]+=.12;
+   if(a[i*3+1]<1){a[i*3+1]=45+Math.random()*15;a[i*3+2]=-5+Math.random()*80}
+  }
+  rain.geometry.attributes.position.needsUpdate=true;
+ }
+
+ if(elapsed>=29)beacon.scale.setScalar(1+Math.sin(elapsed*8)*.18);
+
+ renderer.render(scene,camera);
+}
+
+reset();
+animate();
+</script>
+</body>
+</html>
